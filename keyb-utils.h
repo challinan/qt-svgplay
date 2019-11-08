@@ -1,8 +1,10 @@
 #ifndef KEYBUTILS
 #define KEYBUTILS
 #include <termios.h>
+#include <QWidget>
 #include <QThread>
 
+#if 0
 class KeyHandler : public QThread
 {
     Q_OBJECT
@@ -21,12 +23,14 @@ private:
     int send_char(int fd, int c);
 
     struct termios orig_termios;
+    int fd, cycle_count;
+    FILE *fp;
 
 signals:
     void KeyPressed(char ch);
 };
 
-
+#endif
 
 #endif // KEYBUTILS
 

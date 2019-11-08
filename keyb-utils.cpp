@@ -1,31 +1,41 @@
 #include "keyb-utils.h"
 #include <sys/select.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <QDebug>
-#if 0
-#include <QString>
-#endif
+#include <QKeyEvent>
 
 #define DEBUG_TERMINAL_DEV "/dev/ttys000"
 #define DEBUG 1
-
+#if 0
 KeyHandler::KeyHandler()
 {
-    qDebug("KeyHandler started");
+    qDebug("KeyHandler started - Opening terminal device%s", DEBUG_TERMINAL_DEV);
+    fd = open(DEBUG_TERMINAL_DEV, O_RDWR);
+    if ( fd == -1 ) {
+        perror(DEBUG_TERMINAL_DEV " Error opening serial port\n");
+        QThread::exit(7);
+    }
+    qDebug("Port opened successfully on %d", fd);
+    fp = fdopen(fd, "rw");
+    if ( fp == nullptr )
+        qDebug("Failed to associate fd with fp");
     set_conio_terminal_mode();
-    qDebug() << "Types:" << QString("String") << QChar('x');
+    // qDebug() << "Types:" << QString("String") << QChar('x');
+    cycle_count = 0;
 }
 
 KeyHandler::~KeyHandler()
 {
     qDebug("Closing - resetting terminal mode");
     reset_terminal_mode();
+    close(fd);
 }
 
 void KeyHandler::reset_terminal_mode()
 {
-    qDebug("Closing - in function 'resetting terminal mode'");
+    qDebug("Closing - in function - resetting terminal mode");
     tcsetattr(0, TCSANOW, &orig_termios);
 }
 
@@ -36,16 +46,16 @@ void KeyHandler::set_conio_terminal_mode()
     qDebug() << "set_conio_terminal_mode(): setting mode";
 
     /* take two copies - one for now, one for later */
-    rc = tcgetattr(0, &orig_termios);
+    rc = tcgetattr(fd, &orig_termios);
     if ( rc != 0 ) {
         rc = errno;
         perror("tcgetattr() failed");
         qDebug() << "set_conio_terminal_mode(): " << errno;
     }
-    memcpy((void *)&new_termios, (void *)&orig_termios, (size_t) sizeof(new_termios));
+    memcpy(static_cast<void *>(&new_termios), static_cast<void *>(&orig_termios), static_cast<size_t> (sizeof(new_termios)));
 
     cfmakeraw(&new_termios);
-    tcsetattr(0, TCSANOW, &new_termios);
+    tcsetattr(fd, TCSANOW, &new_termios);
 }
 
 int KeyHandler::serial_port_char_avail(int fd) {
@@ -53,26 +63,39 @@ int KeyHandler::serial_port_char_avail(int fd) {
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(fd, &fds);
-    return select(fd+1, &fds, NULL, NULL, &tv);
+    return select(fd+1, &fds, nullptr, nullptr, &tv);
 }
 
 int KeyHandler::kbhit()
 {
     // Check stdin for key available
+    int rc;
     struct timeval tv = { 0L, 0L };
     fd_set fds;
     FD_ZERO(&fds);
-    FD_SET(0, &fds);
-    return select(1, &fds, NULL, NULL, &tv);
+    FD_SET(fd, &fds);
+    rc = select(fd+1, &fds, nullptr, nullptr, &tv);
+    if ( rc == -1 )
+        qDebug("select failed ************%d", rc);
+    if ( rc != 0 )
+        qDebug("select found %d fds ready: ", rc);
+    return rc;
 }
 
 int KeyHandler::getch()
 {
-    int r;
-    unsigned char c;
-    if ((r = (int) read(0, &c, sizeof(c))) < 0) {
-        return r;
+    int rc;
+    char c;
+    qDebug("getch Entered - we have a key - cycle count = %d", cycle_count);
+    rc =  static_cast<int>(read(fd, static_cast<void *>(&c), sizeof(c)));
+    cycle_count++;
+
+    if ( rc < 0 ) {
+        qDebug("Error reading detected character %d", rc);
+        return rc;
     } else {
+        qDebug("Emit KeyPressed - rc = %d, character = %c", rc, c);
+        emit KeyPressed(c);
         return c;
     }
 }
@@ -80,11 +103,14 @@ int KeyHandler::getch()
 void KeyHandler::run()
 {
     char c;
+    qDebug("KeyHandler worker thread entered");
     while ( 1 ) {
+        fflush(fp);
         if ( kbhit() ) {
-            c = getch();
+             c = static_cast<char>(getch());
             switch(c) {
             case 'Q':
+                QThread::exit(0);
                 break;
             default:
                 break;
@@ -92,6 +118,7 @@ void KeyHandler::run()
         }
     }
 }
+#endif
 
 #if 0
 
@@ -102,14 +129,6 @@ int main_loop(int argc, char **argv) {
     int start_timeout = 0, timeout = 0;
     speed_t baud = B1200; /* baud rate */
     struct termios settings;
-
-    qDebug("Opening terminal device\n");
-    fd = open(DEBUG_TERMINAL_DEV, O_RDWR);
-    if ( fd == -1 ) {
-        perror("Error opening serial port\n");
-        exit(1);
-    }
-    qDebug("USB Serial port opened successfully on %d\n\r", fd);
 
     /* set the other settings (in this case, baud, 1200/8N2) */
     tcgetattr(fd, &settings);
