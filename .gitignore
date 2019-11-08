@@ -34,3 +34,4 @@
 # Other Qt files
 .qmake.stash
 build-SvgPlay-Desktop_Qt_5_9_8_clang_64bit-Debug
+SvgPlay.pro.user
