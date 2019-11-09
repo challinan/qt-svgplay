@@ -16,10 +16,8 @@ QMAKE_CXXFLAGS += "-Wno-inconsistent-missing-override"
 
 
 SOURCES += main.cpp\
-        mainwindow.cpp \
-    keyb-utils.cpp
+        mainwindow.cpp
 
-HEADERS  += mainwindow.h \
-    keyb-utils.h
+HEADERS  += mainwindow.h
 
 FORMS    += mainwindow.ui
